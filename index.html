@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>QuelessIndia — Login</title>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+<div class="auth-wrap">
+  <!-- Left Banner -->
+  <div class="banner">
+    <div class="banner-inner">
+      <div class="logo">⚡</div>
+      <h1>QuelessIndia</h1>
+      <p class="tagline">Skip the queue.<br>Save your time.</p>
+      <div class="divider"></div>
+      <ul class="features">
+        <li><span>📋</span> Book tokens instantly</li>
+        <li><span>📡</span> Real-time queue tracking</li>
+        <li><span>⏱</span> Smart reporting time</li>
+        <li><span>🏥</span> Hospital, Bank &amp; more</li>
+      </ul>
+    </div>
+    <div class="banner-circle c1"></div>
+    <div class="banner-circle c2"></div>
+  </div>
+
+  <!-- Auth Card -->
+  <div class="auth-side">
+    <div class="auth-card">
+      <!-- Tab Switcher -->
+      <div class="tab-bar">
+        <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">Sign In</button>
+        <button class="tab-btn" id="tab-register" onclick="switchTab('register')">Create Account</button>
+      </div>
+
+      <!-- Login Form -->
+      <div id="form-login" class="auth-form">
+        <h2>Welcome back</h2>
+        <p class="sub">Sign in to your account</p>
+        <div id="login-error" class="error-msg hidden"></div>
+        <label>USERNAME</label>
+        <input type="text" id="login-user" placeholder="Enter username" autocomplete="username"/>
+        <label>PASSWORD</label>
+        <input type="password" id="login-pass" placeholder="Enter password" autocomplete="current-password"/>
+        <button class="btn-primary" onclick="doLogin()">Sign In →</button>
+        <p class="hint">Admin: admin / admin123</p>
+      </div>
+
+      <!-- Register Form -->
+      <div id="form-register" class="auth-form hidden">
+        <h2>Create account</h2>
+        <p class="sub">Join QuelessIndia for free</p>
+        <div id="reg-error" class="error-msg hidden"></div>
+        <div class="row2">
+          <div>
+            <label>FULL NAME</label>
+            <input type="text" id="reg-name" placeholder="Full name"/>
+          </div>
+          <div>
+            <label>EMAIL</label>
+            <input type="email" id="reg-email" placeholder="you@email.com"/>
+          </div>
+        </div>
+        <label>USERNAME</label>
+        <input type="text" id="reg-user" placeholder="Choose a username"/>
+        <div class="row2">
+          <div>
+            <label>PASSWORD</label>
+            <input type="password" id="reg-pass" placeholder="Password"/>
+          </div>
+          <div>
+            <label>CONFIRM PASSWORD</label>
+            <input type="password" id="reg-confirm" placeholder="Confirm"/>
+          </div>
+        </div>
+        <button class="btn-success" onclick="doRegister()">Create Account →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function switchTab(tab) {
+  document.getElementById('form-login').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('form-register').classList.toggle('hidden', tab !== 'register');
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+}
+
+async function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-error');
+  if (!u || !p) { showErr(err, 'Please fill all fields'); return; }
+  const res = await fetch('/api/login', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({username: u, password: p})
+  });
+  const data = await res.json();
+  if (data.success) {
+    localStorage.setItem('userId',   data.userId);
+    localStorage.setItem('userName', data.fullName);
+    localStorage.setItem('role',     data.role);
+    window.location.href = data.role === 'ADMIN' ? 'admin.html' : 'dashboard.html';
+  } else {
+    showErr(err, data.message || 'Invalid credentials');
+  }
+}
+
+async function doRegister() {
+  const name    = document.getElementById('reg-name').value.trim();
+  const email   = document.getElementById('reg-email').value.trim();
+  const user    = document.getElementById('reg-user').value.trim();
+  const pass    = document.getElementById('reg-pass').value;
+  const confirm = document.getElementById('reg-confirm').value;
+  const err     = document.getElementById('reg-error');
+  if (!name || !user || !pass) { showErr(err, 'Please fill all required fields'); return; }
+  if (pass !== confirm)        { showErr(err, 'Passwords do not match'); return; }
+  const res = await fetch('/api/register', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({fullName: name, email, username: user, password: pass})
+  });
+  const data = await res.json();
+  if (data.success) {
+    alert('Account created! Please sign in.');
+    switchTab('login');
+  } else {
+    showErr(err, data.message || 'Registration failed');
+  }
+}
+
+function showErr(el, msg) {
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
+}
+</script>
+</body>
+</html>

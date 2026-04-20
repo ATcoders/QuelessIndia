@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>QuelessIndia — Dashboard</title>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <span>⚡</span>
+    <span class="brand-name">QuelessIndia</span>
+  </div>
+  <div class="topbar-right">
+    <span class="topbar-user" id="top-name"></span>
+    <button class="btn-danger" onclick="logout()">Sign Out</button>
+  </div>
+</div>
+
+<div class="page">
+  <!-- Header -->
+  <div class="page-header">
+    <div>
+      <div class="page-title">My Tokens</div>
+      <div style="color:var(--muted);font-size:13px;margin-top:4px">Manage your queue bookings</div>
+    </div>
+    <div class="page-actions">
+      <button class="btn-ghost" onclick="loadTokens()">↺ Refresh</button>
+      <button class="btn-primary" onclick="openCreateModal()">＋ New Token</button>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value indigo" id="stat-total">—</div></div>
+    <div class="stat-card"><div class="stat-label">Waiting</div><div class="stat-value yellow" id="stat-waiting">—</div></div>
+    <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value green" id="stat-done">—</div></div>
+    <div class="stat-card"><div class="stat-label">Cancelled</div><div class="stat-value red" id="stat-cancel">—</div></div>
+  </div>
+
+  <!-- Queue status bar (appears when row selected) -->
+  <div class="queue-bar hidden" id="queue-bar">
+    <div class="q-item"><div class="q-label">Service</div><div class="q-value" id="q-service">—</div></div>
+    <div class="q-item"><div class="q-label">Your Token</div><div class="q-value" id="q-token">—</div></div>
+    <div class="q-item"><div class="q-label">Now Serving</div><div class="q-value" id="q-now">—</div></div>
+    <div class="q-item"><div class="q-label">Ahead of You</div><div class="q-value" id="q-ahead">—</div></div>
+    <div class="q-item"><div class="q-label">Est. Wait</div><div class="q-value" id="q-wait">—</div></div>
+  </div>
+
+  <!-- Tokens Table -->
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table id="token-table">
+        <thead>
+          <tr>
+            <th>Token #</th><th>Service</th><th>Name</th><th>Reason</th>
+            <th>Appt. Time</th><th>Report Time</th><th>Status</th><th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="token-body">
+          <tr><td colspan="8"><div class="empty-state"><div class="icon">🎟</div><p>No tokens yet. Book one!</p></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Create Token Modal -->
+<div class="modal-overlay hidden" id="create-modal">
+  <div class="modal">
+    <h3>Book a Token</h3>
+    <p class="sub">Fill in the details to get your queue number</p>
+    <div id="create-error" class="error-msg hidden"></div>
+    <label>SERVICE TYPE</label>
+    <select id="c-service"></select>
+    <label>YOUR NAME</label>
+    <input type="text" id="c-name" placeholder="Full name"/>
+    <label>PREFERRED TIME</label>
+    <input type="datetime-local" id="c-time"/>
+    <label>REASON</label>
+    <input type="text" id="c-reason" placeholder="Reason for visit"/>
+    <label>ADDITIONAL NOTES (optional)</label>
+    <textarea id="c-notes" placeholder="Any extra details..."></textarea>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitToken()">✓ Generate Token</button>
+    </div>
+  </div>
+</div>
+
+<!-- Token Result Modal -->
+<div class="modal-overlay hidden" id="result-modal">
+  <div class="modal" style="text-align:center">
+    <div style="font-size:52px;margin-bottom:12px">🎉</div>
+    <h3>Token Generated!</h3>
+    <p class="sub">Your queue booking is confirmed</p>
+    <div id="result-body" style="background:var(--surface2);border-radius:10px;padding:18px;margin:16px 0;text-align:left;line-height:2"></div>
+    <button class="btn-primary" onclick="closeResultModal()">Done</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const userId   = localStorage.getItem('userId');
+const userName = localStorage.getItem('userName') || 'User';
+if (!userId) window.location.href = 'index.html';
+
+document.getElementById('top-name').textContent = '👤 ' + userName;
+
+// Load services into dropdown
+async function loadServices() {
+  const res = await fetch('/api/services');
+  const data = await res.json();
+  const sel = document.getElementById('c-service');
+  sel.innerHTML = data.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+// Load tokens
+async function loadTokens() {
+  const res  = await fetch(`/api/tokens?userId=${userId}`);
+  const data = await res.json();
+  const body = document.getElementById('token-body');
+
+  if (!data.length) {
+    body.innerHTML = `<tr><td colspan="8"><div class="empty-state"><div class="icon">🎟</div><p>No tokens yet. Book one!</p></div></td></tr>`;
+    updateStats([]);
+    return;
+  }
+
+  body.innerHTML = data.map(t => `
+    <tr onclick="showQueueStatus('${t.serviceType}', ${t.tokenNo})" style="cursor:pointer">
+      <td><strong style="color:var(--primary-light)">#${t.tokenNo}</strong></td>
+      <td>${t.serviceType}</td>
+      <td>${t.name}</td>
+      <td>${t.reason}</td>
+      <td>${t.appointmentTime || '—'}</td>
+      <td>${t.reportTime || '—'}</td>
+      <td><span class="badge badge-${t.status.toLowerCase()}">${t.status}</span></td>
+      <td>
+        <button class="btn-danger" style="padding:5px 12px;font-size:12px" onclick="event.stopPropagation();deleteToken(${t.id})">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+
+  updateStats(data);
+}
+
+function updateStats(data) {
+  document.getElementById('stat-total').textContent   = data.length;
+  document.getElementById('stat-waiting').textContent = data.filter(t => t.status === 'WAITING').length;
+  document.getElementById('stat-done').textContent    = data.filter(t => t.status === 'COMPLETED').length;
+  document.getElementById('stat-cancel').textContent  = data.filter(t => t.status === 'CANCELLED').length;
+}
+
+async function showQueueStatus(service, tokenNo) {
+  const res  = await fetch(`/api/queue-status?service=${encodeURIComponent(service)}`);
+  const data = await res.json();
+  const cur   = data.currentToken;
+  const ahead = Math.max(0, tokenNo - cur - 1);
+  document.getElementById('q-service').textContent = service;
+  document.getElementById('q-token').textContent   = '#' + tokenNo;
+  document.getElementById('q-now').textContent     = '#' + cur;
+  document.getElementById('q-ahead').textContent   = ahead;
+  document.getElementById('q-wait').textContent    = '~' + (ahead * 10) + ' min';
+  document.getElementById('queue-bar').classList.remove('hidden');
+}
+
+async function deleteToken(id) {
+  if (!confirm('Delete this token?')) return;
+  const res  = await fetch(`/api/tokens/${id}?userId=${userId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.success) { toast('Token deleted', 't-success'); loadTokens(); }
+  else toast(data.message || 'Error', 't-error');
+}
+
+// ---- Create Token Modal ----
+function openCreateModal() {
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+  document.getElementById('c-time').value = now.toISOString().slice(0,16);
+  document.getElementById('c-name').value = userName;
+  document.getElementById('create-modal').classList.remove('hidden');
+}
+function closeCreateModal() {
+  document.getElementById('create-modal').classList.add('hidden');
+}
+
+async function submitToken() {
+  const service = document.getElementById('c-service').value;
+  const name    = document.getElementById('c-name').value.trim();
+  const time    = document.getElementById('c-time').value;
+  const reason  = document.getElementById('c-reason').value.trim();
+  const notes   = document.getElementById('c-notes').value.trim();
+  const err     = document.getElementById('create-error');
+  if (!name || !reason || !time) { showFormErr(err, 'Please fill all required fields'); return; }
+
+  const res  = await fetch('/api/tokens', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ userId, serviceType: service, name, appointmentTime: time, reason, notes })
+  });
+  const data = await res.json();
+  if (data.success) {
+    closeCreateModal();
+    loadTokens();
+    showResultModal(data);
+  } else {
+    showFormErr(err, data.message || 'Error creating token');
+  }
+}
+
+function showResultModal(d) {
+  document.getElementById('result-body').innerHTML = `
+    <div>🏢 <b>Service:</b> ${d.serviceType}</div>
+    <div>🎟 <b>Token Number:</b> <span style="color:var(--primary-light);font-size:18px">#${d.tokenNo}</span></div>
+    <div>📡 <b>Now Serving:</b> #${d.currentToken}</div>
+    <div>👥 <b>People Ahead:</b> ${d.ahead}</div>
+    <div>⏱ <b>Report Time:</b> ${d.reportTime}</div>
+  `;
+  document.getElementById('result-modal').classList.remove('hidden');
+}
+function closeResultModal() { document.getElementById('result-modal').classList.add('hidden'); }
+
+function showFormErr(el, msg) {
+  el.textContent = msg; el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+
+function toast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  setTimeout(() => t.className = '', 3000);
+}
+
+loadServices();
+loadTokens();
+</script>
+</body>
+</html>

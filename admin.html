@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>QuelessIndia — Admin</title>
+<link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">
+    <span>⚡</span>
+    <span class="brand-name">QuelessIndia</span>
+    <span style="color:var(--muted);font-size:12px;margin-left:8px">Admin Panel</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn-danger" onclick="logout()">Sign Out</button>
+  </div>
+</div>
+
+<div class="page">
+  <div class="page-header">
+    <div class="page-title">Admin Control Panel</div>
+  </div>
+
+  <!-- Global Stats -->
+  <div class="stats-row" id="admin-stats">
+    <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value indigo" id="as-total">—</div></div>
+    <div class="stat-card"><div class="stat-label">Waiting</div><div class="stat-value yellow" id="as-waiting">—</div></div>
+    <div class="stat-card"><div class="stat-label">Serving Now</div><div class="stat-value indigo" id="as-serving">—</div></div>
+    <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value green" id="as-done">—</div></div>
+    <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value green" id="as-users">—</div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="admin-tabs">
+    <button class="admin-tab active" onclick="switchTab('tokens')">📊 All Tokens</button>
+    <button class="admin-tab" onclick="switchTab('users')">👥 Users</button>
+    <button class="admin-tab" onclick="switchTab('queue')">🎯 Queue Control</button>
+  </div>
+
+  <!-- Tokens Tab -->
+  <div class="tab-panel active" id="panel-tokens">
+    <div class="page-actions" style="margin-bottom:16px">
+      <button class="btn-ghost" onclick="loadAllTokens()">↺ Refresh</button>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Token #</th><th>Service</th><th>Name</th><th>Reason</th><th>Appt. Time</th><th>Report Time</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="admin-token-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Users Tab -->
+  <div class="tab-panel" id="panel-users">
+    <div class="page-actions" style="margin-bottom:16px">
+      <button class="btn-ghost" onclick="loadUsers()">↺ Refresh</button>
+    </div>
+    <div class="card" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Username</th><th>Full Name</th><th>Email</th><th>Role</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="admin-user-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Queue Control Tab -->
+  <div class="tab-panel" id="panel-queue">
+    <div class="page-actions" style="margin-bottom:16px">
+      <button class="btn-ghost" onclick="loadQueue()">↺ Refresh</button>
+    </div>
+    <div id="queue-cards" class="stats-row" style="grid-template-columns: repeat(auto-fit, minmax(220px,1fr))"></div>
+  </div>
+</div>
+
+<!-- Edit Token Modal -->
+<div class="modal-overlay hidden" id="edit-token-modal">
+  <div class="modal">
+    <h3>Edit Token</h3><p class="sub">Update token details</p>
+    <input type="hidden" id="et-id"/>
+    <label>NAME</label><input type="text" id="et-name"/>
+    <label>SERVICE</label><input type="text" id="et-service"/>
+    <label>REASON</label><input type="text" id="et-reason"/>
+    <label>APPOINTMENT TIME</label><input type="text" id="et-appt"/>
+    <label>REPORT TIME</label><input type="text" id="et-report"/>
+    <label>STATUS</label>
+    <select id="et-status">
+      <option>WAITING</option><option>SERVING</option><option>COMPLETED</option><option>CANCELLED</option>
+    </select>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal('edit-token-modal')">Cancel</button>
+      <button class="btn-primary" onclick="saveToken()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay hidden" id="edit-user-modal">
+  <div class="modal">
+    <h3>Edit User</h3><p class="sub">Update user details</p>
+    <input type="hidden" id="eu-id"/>
+    <label>FULL NAME</label><input type="text" id="eu-name"/>
+    <label>EMAIL</label><input type="email" id="eu-email"/>
+    <label>ROLE</label>
+    <select id="eu-role"><option>USER</option><option>ADMIN</option></select>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal('edit-user-modal')">Cancel</button>
+      <button class="btn-primary" onclick="saveUser()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+if (localStorage.getItem('role') !== 'ADMIN') window.location.href = 'index.html';
+
+const tabs = document.querySelectorAll('.admin-tab');
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tabs.forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  tabs[['tokens','users','queue'].indexOf(name)].classList.add('active');
+  if (name === 'tokens') loadAllTokens();
+  if (name === 'users')  loadUsers();
+  if (name === 'queue')  loadQueue();
+}
+
+// ---- TOKENS ----
+async function loadAllTokens() {
+  const res  = await fetch('/api/admin/tokens');
+  const data = await res.json();
+  const body = document.getElementById('admin-token-body');
+  if (!data.length) { body.innerHTML = `<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>No tokens found</p></div></td></tr>`; return; }
+  body.innerHTML = data.map(t => `
+    <tr>
+      <td>${t.id}</td>
+      <td><strong style="color:var(--primary-light)">#${t.tokenNo}</strong></td>
+      <td>${t.serviceType}</td>
+      <td>${t.name}</td>
+      <td>${t.reason}</td>
+      <td>${t.appointmentTime||'—'}</td>
+      <td>${t.reportTime||'—'}</td>
+      <td><span class="badge badge-${t.status.toLowerCase()}">${t.status}</span></td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-primary" style="padding:5px 10px;font-size:11px" onclick="openEditToken(${JSON.stringify(t).replace(/"/g,'&quot;')})">Edit</button>
+        <button class="btn-success" style="padding:5px 10px;font-size:11px" onclick="markComplete(${t.id})">✓</button>
+        <button class="btn-danger"  style="padding:5px 10px;font-size:11px" onclick="deleteAdminToken(${t.id})">✕</button>
+      </td>
+    </tr>
+  `).join('');
+  updateAdminStats(data);
+}
+
+function openEditToken(t) {
+  document.getElementById('et-id').value      = t.id;
+  document.getElementById('et-name').value    = t.name;
+  document.getElementById('et-service').value = t.serviceType;
+  document.getElementById('et-reason').value  = t.reason;
+  document.getElementById('et-appt').value    = t.appointmentTime || '';
+  document.getElementById('et-report').value  = t.reportTime || '';
+  document.getElementById('et-status').value  = t.status;
+  document.getElementById('edit-token-modal').classList.remove('hidden');
+}
+
+async function saveToken() {
+  const body = {
+    name: document.getElementById('et-name').value,
+    serviceType: document.getElementById('et-service').value,
+    reason: document.getElementById('et-reason').value,
+    appointmentTime: document.getElementById('et-appt').value,
+    reportTime: document.getElementById('et-report').value,
+    status: document.getElementById('et-status').value,
+  };
+  const id  = document.getElementById('et-id').value;
+  const res = await fetch(`/api/admin/tokens/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const d   = await res.json();
+  if (d.success) { closeModal('edit-token-modal'); loadAllTokens(); toast('Token updated','t-success'); }
+  else toast(d.message||'Error','t-error');
+}
+
+async function markComplete(id) {
+  const res = await fetch(`/api/admin/tokens/${id}/complete`, { method:'PUT' });
+  const d   = await res.json();
+  if (d.success) { loadAllTokens(); toast('Marked complete','t-success'); }
+}
+
+async function deleteAdminToken(id) {
+  if (!confirm('Delete this token?')) return;
+  const res = await fetch(`/api/admin/tokens/${id}`, { method:'DELETE' });
+  const d   = await res.json();
+  if (d.success) { loadAllTokens(); toast('Deleted','t-success'); }
+}
+
+function updateAdminStats(data) {
+  document.getElementById('as-total').textContent   = data.length;
+  document.getElementById('as-waiting').textContent = data.filter(t=>t.status==='WAITING').length;
+  document.getElementById('as-serving').textContent = data.filter(t=>t.status==='SERVING').length;
+  document.getElementById('as-done').textContent    = data.filter(t=>t.status==='COMPLETED').length;
+}
+
+// ---- USERS ----
+async function loadUsers() {
+  const res  = await fetch('/api/admin/users');
+  const data = await res.json();
+  document.getElementById('as-users').textContent = data.length;
+  const body = document.getElementById('admin-user-body');
+  body.innerHTML = data.map(u => `
+    <tr>
+      <td>${u.id}</td><td>${u.username}</td><td>${u.fullName||'—'}</td>
+      <td>${u.email||'—'}</td>
+      <td><span class="badge badge-${u.role.toLowerCase()}">${u.role}</span></td>
+      <td style="display:flex;gap:6px">
+        <button class="btn-primary" style="padding:5px 10px;font-size:11px" onclick="openEditUser(${JSON.stringify(u).replace(/"/g,'&quot;')})">Edit</button>
+        ${u.role!=='ADMIN'?`<button class="btn-danger" style="padding:5px 10px;font-size:11px" onclick="deleteUser(${u.id})">✕</button>`:''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function openEditUser(u) {
+  document.getElementById('eu-id').value    = u.id;
+  document.getElementById('eu-name').value  = u.fullName || '';
+  document.getElementById('eu-email').value = u.email || '';
+  document.getElementById('eu-role').value  = u.role;
+  document.getElementById('edit-user-modal').classList.remove('hidden');
+}
+
+async function saveUser() {
+  const id   = document.getElementById('eu-id').value;
+  const body = { fullName: document.getElementById('eu-name').value, email: document.getElementById('eu-email').value, role: document.getElementById('eu-role').value };
+  const res  = await fetch(`/api/admin/users/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const d    = await res.json();
+  if (d.success) { closeModal('edit-user-modal'); loadUsers(); toast('User updated','t-success'); }
+  else toast(d.message||'Error','t-error');
+}
+
+async function deleteUser(id) {
+  if (!confirm('Delete user and all their tokens?')) return;
+  const res = await fetch(`/api/admin/users/${id}`, { method:'DELETE' });
+  const d   = await res.json();
+  if (d.success) { loadUsers(); toast('User deleted','t-success'); }
+}
+
+// ---- QUEUE CONTROL ----
+async function loadQueue() {
+  const res  = await fetch('/api/services/status');
+  const data = await res.json();
+  const cont = document.getElementById('queue-cards');
+  cont.innerHTML = data.map(s => `
+    <div class="card">
+      <div class="card-title">${s.serviceType}</div>
+      <div style="display:flex;gap:24px;margin-bottom:16px">
+        <div><div style="font-size:11px;color:var(--muted);font-weight:700">SERVING</div><div style="font-size:28px;font-weight:800;color:var(--primary-light)">#${s.currentToken}</div></div>
+        <div><div style="font-size:11px;color:var(--muted);font-weight:700">LAST ISSUED</div><div style="font-size:28px;font-weight:800;color:var(--warning)">#${s.lastIssued}</div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-success" style="font-size:12px;padding:7px 12px" onclick="callNext('${s.serviceType}')">▶ Next</button>
+        <button class="btn-primary" style="font-size:12px;padding:7px 12px" onclick="setToken('${s.serviceType}')">⚙ Set</button>
+        <button class="btn-danger"  style="font-size:12px;padding:7px 12px" onclick="resetQueue('${s.serviceType}')">↺ Reset</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function callNext(svc) {
+  const res = await fetch('/api/queue/next', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({serviceType: svc}) });
+  const d   = await res.json();
+  if (d.success) { loadQueue(); loadAllTokens(); toast(`Now serving #${d.currentToken} — ${svc}`, 't-success'); }
+}
+
+async function setToken(svc) {
+  const v = prompt(`Set current token number for ${svc}:`);
+  if (v === null) return;
+  const n = parseInt(v);
+  if (isNaN(n)) { toast('Invalid number', 't-error'); return; }
+  const res = await fetch('/api/queue/set', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({serviceType: svc, tokenNo: n}) });
+  const d   = await res.json();
+  if (d.success) { loadQueue(); toast('Token set','t-success'); }
+}
+
+async function resetQueue(svc) {
+  if (!confirm(`Reset all counters for ${svc}?`)) return;
+  const res = await fetch('/api/queue/reset', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({serviceType: svc}) });
+  const d   = await res.json();
+  if (d.success) { loadQueue(); toast('Queue reset','t-success'); }
+}
+
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function logout() { localStorage.clear(); window.location.href = 'index.html'; }
+function toast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  setTimeout(() => t.className = '', 3000);
+}
+
+loadAllTokens();
+loadUsers();
+loadQueue();
+</script>
+</body>
+</html>
